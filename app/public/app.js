@@ -371,16 +371,76 @@
   }
   function updateCount() { if (S.room) setCallState(`${S.room.remoteParticipants.size + 1} in call`); }
 
+  // ---- keeping calls alive when the app or tab goes to the background ----
+  // Android app: a native foreground service (CallService plugin) keeps the mic + network alive.
+  const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  function nativeCall(method, data) {
+    if (!isNative || !window.Capacitor.nativePromise) return Promise.resolve();
+    return window.Capacitor.nativePromise('CallService', method, data || {}).catch(e => console.warn('CallService.' + method, e));
+  }
+  if (isNative && window.Capacitor.addListener) {
+    try { window.Capacitor.addListener('CallService', 'hangup', () => leaveCall()); } catch (e) { console.warn(e); }
+  }
+  // Mobile Chrome "freezes" background tabs and LiveKit hangs up on that event: swallow it during calls.
+  window.addEventListener('freeze', e => { if (S.call) e.stopImmediatePropagation(); }, true);
+  // Real page unloads (not app switching) still end the call cleanly.
+  window.addEventListener('pagehide', e => { if (!e.persisted && S.room) S.room.disconnect(); });
+  window.addEventListener('beforeunload', () => { if (S.room) S.room.disconnect(); });
+
+  let wakeLock = null;
+  async function keepScreenOn() {
+    try {
+      if (S.call && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch { wakeLock = null; }
+  }
+  function releaseScreen() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+  function setMediaSession(title) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = title ? new MediaMetadata({ title: 'In call · ' + title, artist: 'Zien Call', artwork: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }] }) : null;
+      navigator.mediaSession.playbackState = title ? 'playing' : 'none';
+      for (const [action, fn] of [['hangup', () => leaveCall()], ['togglemicrophone', () => $('cMic').click()], ['togglecamera', () => $('cCam').click()]]) {
+        try { navigator.mediaSession.setActionHandler(action, title ? fn : null); } catch { /* action not supported */ }
+      }
+    } catch { /* ignore */ }
+  }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !S.call) return;
+    keepScreenOn();
+    if (!S.room) return rejoinNow();
+    // background capture may have been stopped by the OS: switch mic/camera back on if they should be on
+    const lp = S.room.localParticipant;
+    try { if (S.call.mic && !lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(true); } catch { /* ignore */ }
+    try { if (S.call.cam && !lp.isCameraEnabled) await lp.setCameraEnabled(true); } catch { /* ignore */ }
+    updateCallButtons();
+  });
+  window.addEventListener('online', () => { if (S.call && !S.room) rejoinNow(); });
+
+  // ---- calls ----
   async function joinCall(conv, video) {
     if (!LK || !LK.Room) return alert('Calling library failed to load. Refresh the page.');
-    if (S.room) { if (S.callConv === conv) { $('call').classList.remove('hidden'); return; } await leaveCall(); }
+    if (S.call) { if (S.call.conv === conv) { $('call').classList.remove('hidden'); return; } endCall(); }
     hideRing();
+    S.call = { conv, video: !!video, mic: true, cam: !!video, attempts: 0, timer: null, title: convInfo(conv).title };
+    S.callConv = conv;
     $('call').classList.remove('hidden'); $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
-    $('callTitle').textContent = convInfo(conv).title; setCallState('Connecting…');
+    $('callTitle').textContent = S.call.title;
+    if (!(await connectCall(true)) && S.call && !S.room) endCall();
+  }
+
+  // Connects (or reconnects) the current call. Returns true when connected.
+  async function connectCall(first) {
+    const c = S.call; if (!c) return false;
+    setCallState(first ? 'Connecting…' : 'Reconnecting…');
     let data;
-    try { data = await api('/api/call', { conv, video }); } catch (e) { $('call').classList.add('hidden'); return alert(e.message); }
-    const room = new LK.Room({ adaptiveStream: true, dynacast: true, videoCaptureDefaults: { resolution: LK.VideoPresets.h540.resolution } });
-    S.room = room; S.callConv = conv;
+    try { data = await api('/api/call', { conv: c.conv, video: c.video, rejoin: !first }); }
+    catch (e) { if (first) alert(e.message); else if (e.status === 401 || e.status === 404) endCall('The call ended: ' + e.message); return false; }
+    if (S.call !== c) return false;
+    const room = new LK.Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: false, videoCaptureDefaults: { resolution: LK.VideoPresets.h540.resolution } });
+    let live = false;
     const E = LK.RoomEvent;
     room
       .on(E.TrackSubscribed, (track, _pub, p) => attachTrack(track, p.identity, false))
@@ -392,53 +452,98 @@
       .on(E.ParticipantConnected, p => { tile(p.identity, false); updateCount(); })
       .on(E.ParticipantDisconnected, p => { removeTile(p.identity); updateCount(); })
       .on(E.ActiveSpeakersChanged, speakers => {
-        const ids = new Set(speakers.map(s => s.identity));
+        const ids = new Set(speakers.map(sp => sp.identity));
         tiles.forEach((t, id) => t.classList.toggle('speaking', ids.has(id)));
       })
       .on(E.Reconnecting, () => setCallState('Reconnecting…'))
       .on(E.Reconnected, updateCount)
-      .on(E.Disconnected, () => { if (S.room === room) cleanupCall(); });
-
+      .on(E.Disconnected, reason => { if (live && S.room === room) { S.room = null; onCallDropped(reason); } });
+    S.room = room;
     try {
       const opts = {};
       if (store.get('relay', false)) opts.rtcConfig = { iceTransportPolicy: 'relay' };
       await room.connect(data.url, data.token, opts);
+      if (S.call !== c || S.room !== room) { room.disconnect(); return false; }
+      live = true;
+      $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
       tile(room.localParticipant.identity, true);
       room.remoteParticipants.forEach(p => { tile(p.identity, false); p.trackPublications.forEach(pub => { if (pub.track && pub.isSubscribed) attachTrack(pub.track, p.identity, false); }); });
       updateCount();
       await room.startAudio().catch(() => {});
-      try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { alert('Microphone blocked: ' + e.message); }
-      if (video) { try { await room.localParticipant.setCameraEnabled(true); } catch (e) { alert('Camera blocked: ' + e.message); } }
-      updateCallButtons();
+      if (c.mic) { try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { if (first) alert('Microphone blocked: ' + e.message); } }
+      if (c.cam) { try { await room.localParticipant.setCameraEnabled(true); } catch (e) { if (first) alert('Camera blocked: ' + e.message); } }
+      c.attempts = 0;
+      updateCallButtons(); setMediaSession(c.title); keepScreenOn();
+      nativeCall('start', { title: c.title, video: room.localParticipant.isCameraEnabled });
+      return true;
     } catch (e) {
       console.error(e);
-      alert('Could not connect: ' + (e.message || e) + (store.get('relay', false) ? '' : '\n\nTip: turn on "Force port-443 relay" in Settings and try again.'));
-      await leaveCall();
+      if (S.room === room) S.room = null;
+      room.disconnect().catch(() => {});
+      if (first) alert('Could not connect: ' + (e.message || e) + (store.get('relay', false) ? '' : '\n\nTip: turn on "Force port-443 relay" in Settings and try again.'));
+      return false;
     }
   }
+
+  function onCallDropped(reason) {
+    const R = LK.DisconnectReason || {};
+    if (!S.call || reason === R.CLIENT_INITIATED) return endCall();
+    if (reason === R.DUPLICATE_IDENTITY) return endCall('You joined this call from another device, so it ended here.');
+    if (reason === R.PARTICIPANT_REMOVED || reason === R.ROOM_DELETED) return endCall('You were removed from the call.');
+    setCallState('Connection lost · reconnecting…');
+    rejoinSoon();
+  }
+  function rejoinSoon(delay) {
+    const c = S.call; if (!c || c.timer || S.room) return;
+    if (delay === undefined) delay = Math.min(15000, 1000 * 2 ** Math.min(c.attempts, 4));
+    c.timer = setTimeout(async () => {
+      c.timer = null;
+      if (S.call !== c || S.room) return;
+      if (!navigator.onLine) { setCallState('Offline · waiting for network…'); return; }   // the 'online' event retries
+      if (++c.attempts > 15) return endCall('The call dropped and could not reconnect.');
+      if (!(await connectCall(false)) && S.call === c && !S.room) { setCallState('Reconnecting… (try ' + c.attempts + ')'); rejoinSoon(); }
+    }, delay);
+  }
+  function rejoinNow() { const c = S.call; if (!c || S.room) return; if (c.timer) { clearTimeout(c.timer); c.timer = null; } rejoinSoon(0); }
+
   function cleanupCall() {
-    S.room = null; S.callConv = null;
     $('call').classList.add('hidden'); $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
   }
-  async function leaveCall() { const r = S.room; if (r) { S.room = null; try { await r.disconnect(); } catch { /* ignore */ } } cleanupCall(); }
+  function endCall(message) {
+    const c = S.call; S.call = null; S.callConv = null;
+    if (c && c.timer) clearTimeout(c.timer);
+    const r = S.room; S.room = null;
+    if (r) r.disconnect().catch(() => {});
+    cleanupCall(); setMediaSession(null); releaseScreen(); nativeCall('stop');
+    if (message) alert(message);
+  }
+  async function leaveCall() { endCall(); }
 
   $('cLeave').onclick = leaveCall;
-  $('cMic').onclick = async () => { const lp = S.room.localParticipant; await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled); updateCallButtons(); };
+  $('cMic').onclick = async () => {
+    if (!S.room) return;
+    const lp = S.room.localParticipant;
+    try { await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled); } catch (e) { alert('Microphone: ' + e.message); }
+    if (S.call) S.call.mic = lp.isMicrophoneEnabled;
+    updateCallButtons();
+  };
   $('cCam').onclick = async () => {
+    if (!S.room) return;
     const lp = S.room.localParticipant;
     try { await lp.setCameraEnabled(!lp.isCameraEnabled); } catch (e) { alert('Camera: ' + e.message); }
     if (!lp.isCameraEnabled) { const t = tiles.get(lp.identity); if (t) t.querySelectorAll('video').forEach(v => v.remove()); }
+    if (S.call) { S.call.cam = lp.isCameraEnabled; nativeCall('start', { title: S.call.title, video: lp.isCameraEnabled }); }
     updateCallButtons();
   };
   let facing = 'user';
   $('cFlip').onclick = async () => {
+    if (!S.room) return;
     const pub = S.room.localParticipant.getTrackPublication(LK.Track.Source.Camera);
     if (!pub || !pub.track) return;
     facing = facing === 'user' ? 'environment' : 'user';
     try { await pub.track.restartTrack({ facingMode: facing }); } catch (e) { alert('Could not switch camera: ' + e.message); }
     const t = tiles.get(S.room.localParticipant.identity); if (t) t.classList.toggle('local', facing === 'user');
   };
-  window.addEventListener('beforeunload', () => { if (S.room) S.room.disconnect(); });
 
   // ================= BOOT =================
   api('/api/config').then(c => {

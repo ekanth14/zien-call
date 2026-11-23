@@ -498,7 +498,7 @@ app.post('/api/call', auth, async (req, res) => {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: req.user.username, name: req.user.username, ttl: '2h' });
     at.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true });
     const token = await at.toJwt();
-    if (!participants) {
+    if (!participants && !req.body.rejoin) {   // automatic reconnects don't ring everyone again
       const ring = { type: 'call', conv, title: access.kind === 'dm' ? req.user.username : access.title, from: req.user.username, fromId: req.user.id, video };
       broadcast(ring, access.members);
     }
