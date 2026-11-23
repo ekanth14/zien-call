@@ -264,10 +264,12 @@
   $('optSound').checked = store.get('sound', true);
   $('optRelay').onchange = () => store.set('relay', $('optRelay').checked);
   $('optSound').onchange = () => store.set('sound', $('optSound').checked);
+  $('optPip').checked = store.get('pip', true);
+  $('optPip').onchange = () => { store.set('pip', $('optPip').checked); if (S.call) nativeCall('update', { pip: $('optPip').checked }); };
   $('btnSettings').onclick = () => $('dlgSettings').showModal();
   $('btnLogout').onclick = async () => { $('dlgSettings').close(); await leaveCall(); try { await api('/api/logout', {}); } catch { /* ignore */ } S.me = null; showAuth(); };
 
-  $('btnAdmin').onclick = () => { location.href = '/admin'; };
+  $('btnAdmin').onclick = () => { if (S.call) window.open('/admin', '_blank'); else location.href = '/admin'; };   // don't drop a live call
 
   $('fPassword').addEventListener('submit', async e => {
     e.preventDefault();
@@ -302,7 +304,14 @@
   const ICON = {
     mic: SVG('<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'),
     micOff: SVG('<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'),
+    phone: SVG('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+    speaker: SVG('<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>'),
+    earpiece: SVG('<rect x="7" y="2" width="10" height="20" rx="2"/><line x1="10.5" y1="5" x2="13.5" y2="5"/>'),
+    bluetooth: SVG('<polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>'),
+    headphones: SVG('<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>'),
+    expand: SVG('<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>'),
   };
+  const ROUTE_ICON = { earpiece: ICON.earpiece, speaker: ICON.speaker, bluetooth: ICON.bluetooth, wired: ICON.headphones };
   let ringTimer = null, ringAudio = null;
   function showRing(d) {
     S.ringConv = d;
@@ -337,6 +346,7 @@
   $('btnAudio').onclick = () => joinCall(S.conv, false);
   $('btnVideo').onclick = () => joinCall(S.conv, true);
 
+  const gridEl = $('grid');   // kept as a reference: the grid can move into a picture-in-picture window
   const tiles = new Map();
   function tile(identity, isLocal) {
     let t = tiles.get(identity);
@@ -344,7 +354,7 @@
       t = el('div', 'tile' + (isLocal ? ' local' : ''));
       t.append(avatar(identity), el('div', 'label', identity + (isLocal ? ' (you)' : '')));
       tiles.set(identity, t);
-      isLocal ? $('grid').prepend(t) : $('grid').append(t);
+      isLocal ? gridEl.prepend(t) : gridEl.append(t);
     }
     return t;
   }
@@ -361,15 +371,32 @@
   }
   function detachTrack(track) { track.detach().forEach(e => e.remove()); }
   function setCallState(t) { $('callState').textContent = t; }
+  let pipMicBtn = null;
   function updateCallButtons() {
     const lp = S.room && S.room.localParticipant; if (!lp) return;
-    $('cMic').classList.toggle('off', !lp.isMicrophoneEnabled);
-    $('cMic').innerHTML = lp.isMicrophoneEnabled ? ICON.mic : ICON.micOff;   // static SVG strings
-    $('cMic').title = lp.isMicrophoneEnabled ? 'Mute' : 'Unmute';
+    const on = lp.isMicrophoneEnabled;
+    for (const b of [$('cMic'), $('miniMic'), pipMicBtn]) {
+      if (!b) continue;
+      b.classList.toggle('off', !on);
+      b.innerHTML = on ? ICON.mic : ICON.micOff;   // static SVG strings
+      b.title = on ? 'Mute' : 'Unmute';
+    }
     $('cCam').classList.toggle('off', !lp.isCameraEnabled);
     $('cFlip').classList.toggle('hidden', !lp.isCameraEnabled);
   }
-  function updateCount() { if (S.room) setCallState(`${S.room.remoteParticipants.size + 1} in call`); }
+  function updateCount() { if (S.room) setCallState(`${S.room.remoteParticipants.size + 1} in call`); updateMini(); }
+  function fmtDuration(ms) {
+    const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+  }
+  function updateMini() {
+    const c = S.call; if (!c) return;
+    $('miniTitle').textContent = c.title;
+    const people = S.room ? (S.room.remoteParticipants.size + 1) + ' in call' : 'reconnecting…';
+    $('miniInfo').textContent = people + (c.startedAt ? ' · ' + fmtDuration(Date.now() - c.startedAt) : '') + ' · tap to return';
+    $('callTimer').textContent = c.startedAt ? fmtDuration(Date.now() - c.startedAt) : '';
+  }
+  setInterval(() => { if (S.call) updateMini(); }, 1000);
 
   // ---- keeping calls alive when the app or tab goes to the background ----
   // Android app: a native foreground service (CallService plugin) keeps the mic + network alive.
@@ -379,7 +406,12 @@
     return window.Capacitor.nativePromise('CallService', method, data || {}).catch(e => console.warn('CallService.' + method, e));
   }
   if (isNative && window.Capacitor.addListener) {
-    try { window.Capacitor.addListener('CallService', 'hangup', () => leaveCall()); } catch (e) { console.warn(e); }
+    try {
+      window.Capacitor.addListener('CallService', 'hangup', () => leaveCall());
+      window.Capacitor.addListener('CallService', 'toggleMic', () => toggleMic());
+      window.Capacitor.addListener('CallService', 'pip', e => document.body.classList.toggle('in-pip', !!(e && e.active)));
+      window.Capacitor.addListener('CallService', 'audioRoutes', st => { S.audio = st; updateAudioButton(); if ($('dlgAudio').open) renderAudioPicker(); });
+    } catch (e) { console.warn(e); }
   }
   // Mobile Chrome "freezes" background tabs and LiveKit hangs up on that event: swallow it during calls.
   window.addEventListener('freeze', e => { if (S.call) e.stopImmediatePropagation(); }, true);
@@ -402,7 +434,9 @@
     try {
       navigator.mediaSession.metadata = title ? new MediaMetadata({ title: 'In call · ' + title, artist: 'Zien Call', artwork: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }] }) : null;
       navigator.mediaSession.playbackState = title ? 'playing' : 'none';
-      for (const [action, fn] of [['hangup', () => leaveCall()], ['togglemicrophone', () => $('cMic').click()], ['togglecamera', () => $('cCam').click()]]) {
+      const actions = [['hangup', () => leaveCall()], ['togglemicrophone', () => toggleMic()], ['togglecamera', () => $('cCam').click()]];
+      if (!isNative) actions.push(['enterpictureinpicture', () => minimizeCall()]);
+      for (const [action, fn] of actions) {
         try { navigator.mediaSession.setActionHandler(action, title ? fn : null); } catch { /* action not supported */ }
       }
     } catch { /* ignore */ }
@@ -422,11 +456,11 @@
   // ---- calls ----
   async function joinCall(conv, video) {
     if (!LK || !LK.Room) return alert('Calling library failed to load. Refresh the page.');
-    if (S.call) { if (S.call.conv === conv) { $('call').classList.remove('hidden'); return; } endCall(); }
+    if (S.call) { if (S.call.conv === conv) { restoreCall(); return; } endCall(); }
     hideRing();
     S.call = { conv, video: !!video, mic: true, cam: !!video, attempts: 0, timer: null, title: convInfo(conv).title };
     S.callConv = conv;
-    $('call').classList.remove('hidden'); $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
+    $('call').classList.remove('hidden'); gridEl.replaceChildren(); $('audios').replaceChildren(); tiles.clear();
     $('callTitle').textContent = S.call.title;
     if (!(await connectCall(true)) && S.call && !S.room) endCall();
   }
@@ -465,7 +499,7 @@
       await room.connect(data.url, data.token, opts);
       if (S.call !== c || S.room !== room) { room.disconnect(); return false; }
       live = true;
-      $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
+      gridEl.replaceChildren(); $('audios').replaceChildren(); tiles.clear();
       tile(room.localParticipant.identity, true);
       room.remoteParticipants.forEach(p => { tile(p.identity, false); p.trackPublications.forEach(pub => { if (pub.track && pub.isSubscribed) attachTrack(pub.track, p.identity, false); }); });
       updateCount();
@@ -473,8 +507,13 @@
       if (c.mic) { try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { if (first) alert('Microphone blocked: ' + e.message); } }
       if (c.cam) { try { await room.localParticipant.setCameraEnabled(true); } catch (e) { if (first) alert('Camera blocked: ' + e.message); } }
       c.attempts = 0;
+      if (!c.startedAt) c.startedAt = Date.now();
+      const savedOut = store.get('audioOut', null);
+      if (!isNative && savedOut && room.switchActiveDevice) room.switchActiveDevice('audiooutput', savedOut).catch(() => {});
       updateCallButtons(); setMediaSession(c.title); keepScreenOn();
-      nativeCall('start', { title: c.title, video: room.localParticipant.isCameraEnabled });
+      nativeCall('start', { title: c.title, video: room.localParticipant.isCameraEnabled, pip: store.get('pip', true), mic: room.localParticipant.isMicrophoneEnabled })
+        .then(st => { if (st && st.routes) { S.audio = st; updateAudioButton(); } });
+      updateMini();
       return true;
     } catch (e) {
       console.error(e);
@@ -507,32 +546,162 @@
   function rejoinNow() { const c = S.call; if (!c || S.room) return; if (c.timer) { clearTimeout(c.timer); c.timer = null; } rejoinSoon(0); }
 
   function cleanupCall() {
-    $('call').classList.add('hidden'); $('grid').replaceChildren(); $('audios').replaceChildren(); tiles.clear();
+    $('call').classList.add('hidden'); gridEl.replaceChildren(); $('audios').replaceChildren(); tiles.clear();
   }
   function endCall(message) {
     const c = S.call; S.call = null; S.callConv = null;
     if (c && c.timer) clearTimeout(c.timer);
     const r = S.room; S.room = null;
     if (r) r.disconnect().catch(() => {});
+    closeBrowserPip();
+    $('miniCall').classList.add('hidden'); document.body.classList.remove('in-pip');
+    S.audio = null; if ($('dlgAudio').open) $('dlgAudio').close();
+    $('callTimer').textContent = '';
     cleanupCall(); setMediaSession(null); releaseScreen(); nativeCall('stop');
     if (message) alert(message);
   }
   async function leaveCall() { endCall(); }
 
   $('cLeave').onclick = leaveCall;
-  $('cMic').onclick = async () => {
+  async function toggleMic() {
     if (!S.room) return;
     const lp = S.room.localParticipant;
     try { await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled); } catch (e) { alert('Microphone: ' + e.message); }
     if (S.call) S.call.mic = lp.isMicrophoneEnabled;
     updateCallButtons();
-  };
+    nativeCall('update', { mic: lp.isMicrophoneEnabled });
+  }
+  $('cMic').onclick = toggleMic;
+  $('miniMic').onclick = e => { e.stopPropagation(); toggleMic(); };
+  $('miniLeave').onclick = e => { e.stopPropagation(); leaveCall(); };
+  $('miniCall').onclick = () => restoreCall();
+  $('miniCall').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restoreCall(); } };
+  $('cMin').onclick = () => minimizeCall();
+  $('cAudio').onclick = () => openAudioPicker();
+
+  // ---- minimise: keep talking while you chat, browse other chats or use other apps ----
+  async function minimizeCall() {
+    if (!S.call) return;
+    S.call.minimized = true;
+    $('call').classList.add('hidden');
+    $('miniCall').classList.remove('hidden');
+    updateMini();
+    if (!isNative && store.get('pip', true)) await openBrowserPip();
+  }
+  function restoreCall() {
+    if (!S.call) return;
+    S.call.minimized = false;
+    closeBrowserPip();
+    $('miniCall').classList.add('hidden');
+    $('call').classList.remove('hidden');
+  }
+  // Browser floating window: Document Picture-in-Picture (desktop Chrome/Edge) or video PiP (others).
+  let pipWin = null;
+  async function openBrowserPip() {
+    if (isNative || !S.call) return false;
+    try {
+      if (window.documentPictureInPicture && !pipWin) {
+        pipWin = await window.documentPictureInPicture.requestWindow({ width: 340, height: 460 });
+        const d = pipWin.document;
+        const css = d.createElement('link'); css.rel = 'stylesheet'; css.href = document.querySelector('link[rel=stylesheet]').href; d.head.append(css);
+        d.title = 'Zien Call · ' + S.call.title;
+        d.body.className = 'pipdoc';
+        d.body.append(gridEl);
+        const bar = d.createElement('div'); bar.className = 'pip-bar';
+        const mk = (cls, title, html, fn) => { const b = d.createElement('button'); b.className = 'round ' + cls; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = html; b.onclick = fn; bar.append(b); return b; };
+        pipMicBtn = mk('', 'Mute', ICON.mic, () => toggleMic());
+        mk('', 'Back to Zien Call', ICON.expand, () => { window.focus(); restoreCall(); });
+        mk('danger', 'Hang up', ICON.phone, () => leaveCall());
+        d.body.append(bar);
+        updateCallButtons();
+        gridEl.querySelectorAll('video').forEach(v => v.play().catch(() => {}));
+        pipWin.addEventListener('pagehide', () => {
+          $('call').insertBefore(gridEl, $('audios'));
+          gridEl.querySelectorAll('video').forEach(v => v.play().catch(() => {}));
+          pipWin = null; pipMicBtn = null;
+        });
+        return true;
+      }
+      if (document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+        const remote = [...tiles.values()].filter(t => !t.classList.contains('local'));
+        const t = remote.find(x => x.classList.contains('speaking') && x.querySelector('video')) || remote.find(x => x.querySelector('video'));
+        if (t) { await t.querySelector('video').requestPictureInPicture(); return true; }
+      }
+    } catch (e) { console.warn('picture-in-picture', e); }
+    return false;
+  }
+  function closeBrowserPip() {
+    if (pipWin) { try { pipWin.close(); } catch { /* ignore */ } }
+    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+  }
+
+  // ---- audio device: earpiece / speaker / Bluetooth / headset ----
+  function updateAudioButton() {
+    const cur = S.audio && S.audio.current;
+    $('cAudio').innerHTML = ROUTE_ICON[cur] || ICON.speaker;
+    const r = S.audio && S.audio.routes && S.audio.routes.find(x => x.id === cur);
+    $('cAudio').title = 'Audio: ' + (r ? r.name : 'choose device');
+  }
+  function audioOption(icon, name, active, onPick) {
+    const b = el('button', 'audio-opt' + (active ? ' active' : ''));
+    b.innerHTML = icon;                       // static SVG string
+    b.append(el('span', null, name), el('b', 'tick', active ? '✓' : ''));
+    b.onclick = async () => { try { await onPick(); } catch (e) { alert(e.message || e); } };
+    return b;
+  }
+  async function openAudioPicker() { $('dlgAudio').showModal(); await renderAudioPicker(); }
+  async function renderAudioPicker() {
+    const list = $('audioList'), note = $('audioNote');
+    if (isNative) {
+      let st = S.audio;
+      try { st = await window.Capacitor.nativePromise('CallService', 'getAudioRoutes', {}); S.audio = st; } catch { /* keep last */ }
+      list.replaceChildren(); note.textContent = '';
+      if (!st || !st.routes || !st.routes.length) { note.textContent = 'No audio devices found.'; return; }
+      for (const r of st.routes) {
+        list.append(audioOption(ROUTE_ICON[r.id] || ICON.speaker, r.name, r.active, async () => {
+          S.audio = await window.Capacitor.nativePromise('CallService', 'setAudioRoute', { id: r.id });
+          updateAudioButton(); renderAudioPicker();
+        }));
+      }
+      if (!st.routes.some(r => r.id === 'bluetooth') && st.bluetoothPermission && st.bluetoothPermission !== 'granted') {
+        list.append(audioOption(ICON.bluetooth, 'Allow Bluetooth headsets…', false, async () => {
+          S.audio = await window.Capacitor.nativePromise('CallService', 'requestBluetooth', {});
+          updateAudioButton(); renderAudioPicker();
+        }));
+      }
+      note.textContent = 'Headsets take over automatically when you connect them.';
+      updateAudioButton();
+      return;
+    }
+    const room = S.room;
+    const canPickOutput = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+    const outs = canPickOutput ? await LK.Room.getLocalDevices('audiooutput', false).catch(() => []) : [];
+    const ins = await LK.Room.getLocalDevices('audioinput', false).catch(() => []);
+    list.replaceChildren(); note.textContent = '';
+    if (outs.length) {
+      list.append(el('div', 'audio-sec', 'Play sound on'));
+      const cur = (room && room.getActiveDevice && room.getActiveDevice('audiooutput')) || 'default';
+      for (const d of outs) list.append(audioOption(/blue/i.test(d.label) ? ICON.bluetooth : /head|ear/i.test(d.label) ? ICON.headphones : ICON.speaker, d.label || 'Speaker', d.deviceId === cur, async () => {
+        if (room) await room.switchActiveDevice('audiooutput', d.deviceId);
+        store.set('audioOut', d.deviceId); renderAudioPicker();
+      }));
+    }
+    if (ins.length) {
+      list.append(el('div', 'audio-sec', 'Microphone'));
+      const cur = (room && room.getActiveDevice && room.getActiveDevice('audioinput')) || 'default';
+      for (const d of ins) list.append(audioOption(ICON.mic, d.label || 'Microphone', d.deviceId === cur, async () => {
+        if (room) await room.switchActiveDevice('audioinput', d.deviceId);
+        renderAudioPicker();
+      }));
+    }
+    if (!canPickOutput) note.textContent = 'This browser decides where sound plays. For earpiece, speaker and Bluetooth buttons, use the Zien Call Android app.';
+  }
   $('cCam').onclick = async () => {
     if (!S.room) return;
     const lp = S.room.localParticipant;
     try { await lp.setCameraEnabled(!lp.isCameraEnabled); } catch (e) { alert('Camera: ' + e.message); }
     if (!lp.isCameraEnabled) { const t = tiles.get(lp.identity); if (t) t.querySelectorAll('video').forEach(v => v.remove()); }
-    if (S.call) { S.call.cam = lp.isCameraEnabled; nativeCall('start', { title: S.call.title, video: lp.isCameraEnabled }); }
+    if (S.call) { S.call.cam = lp.isCameraEnabled; nativeCall('start', { title: S.call.title, video: lp.isCameraEnabled, pip: store.get('pip', true), mic: lp.isMicrophoneEnabled }); }
     updateCallButtons();
   };
   let facing = 'user';

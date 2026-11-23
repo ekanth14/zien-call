@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat;
 public class CallService extends Service {
     static final String ACTION_START = "online.zienorganisation.call.action.START";
     static final String ACTION_HANGUP = "online.zienorganisation.call.action.HANGUP";
+    static final String ACTION_TOGGLE_MIC = "online.zienorganisation.call.action.TOGGLE_MIC";
     static final String EXTRA_TITLE = "title";
     static final String EXTRA_VIDEO = "video";
 
@@ -39,6 +40,7 @@ public class CallService extends Service {
     private static final String CHANNEL_ID = "zien_call_ongoing";
     private static final int NOTIFICATION_ID = 4514;
 
+    private static volatile boolean running = false;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
@@ -50,6 +52,11 @@ public class CallService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
+        if (ACTION_TOGGLE_MIC.equals(action)) {
+            CallServicePlugin.emitToggleMic();
+            if (!running) stopSelf();   // stale button with no call: nothing to keep alive
+            return START_NOT_STICKY;
+        }
         if (ACTION_HANGUP.equals(action)) {
             CallServicePlugin.emitHangup();
             shutdown();
@@ -86,6 +93,7 @@ public class CallService extends Service {
                 return START_NOT_STICKY;
             }
         }
+        running = true;
         acquireLocks();
         return START_NOT_STICKY;
     }
@@ -99,6 +107,7 @@ public class CallService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
         releaseLocks();
         super.onDestroy();
     }

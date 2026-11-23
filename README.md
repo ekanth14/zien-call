@@ -35,6 +35,8 @@ The whole stack fits in the 1 GB RAM of an Oracle Cloud Always Free VM.
 | 💬 **Chat** | Channels (`#general`, `#family`, …) and private 1-to-1 messages, delivered instantly over Server-Sent Events, with unread badges, online dots and clickable links |
 | 📞 **Calls** | Audio or video calls in any channel or private chat, up to 10 people. Incoming-call popup with ring, mute, camera on/off, front/back camera switch |
 | 🔁 **Background calls** | Calls keep running when you switch apps or lock the phone: the Android app runs a call-style foreground service (with a *Hang up* button in the notification), and the web app ignores mobile tab freezing and rejoins automatically after a drop |
+| 🎧 **Audio devices** | Pick **earpiece, speaker, Bluetooth or wired headset** during a call (Android app; headsets take over automatically, screen turns off at your ear). Desktop browsers can pick speakers and microphones |
+| 🪟 **Multitasking** | Minimise a call to a small bar and keep chatting. Leaving the Android app turns the call into a **floating picture-in-picture window** with mute and hang up; desktop Chrome/Edge pop the call out into a floating window too |
 | 🛡️ **Strict networks** | Optional *Force port-443 relay* (TURN over TLS) for networks that block WebRTC |
 | ✉️ **Accounts** | Sign-up with a 6-digit email code (via Resend), forgot-password by email, change password in Settings |
 | 👥 **Member limit** | Hard cap of **10 members** (admins don't count). Admins can add, delete, reset passwords and grant admin |
@@ -89,6 +91,7 @@ deploy/               docker-compose.yml, caddy.yaml, livekit.yaml.example, .env
 mobile/               Capacitor 6 Android project (loads the live site)
 tests/                e2e.mjs (90 end-to-end API checks) · resend-mock.mjs (email flow against a fake Resend)
                       background-call.mjs (freeze / drop / rejoin behaviour in headless Chrome)
+                      call-ui.mjs (minimise, picture-in-picture, audio picker, simulated Android bridge)
 docs/                 Architecture diagram and screenshots
 ```
 
@@ -121,7 +124,7 @@ npm install
 npx cap sync android
 cd android && ./gradlew assembleDebug     # JDK 17 + Android SDK 34
 ```
-The APK (`app/build/outputs/apk/debug/app-debug.apk`) opens `https://call.zienorganisation.online` and asks for camera/mic permissions when a call starts. During a call it runs `CallService` (a foreground service of type *microphone*/*camera*, with wake and Wi-Fi locks), so the call keeps going in the background. The web app starts and stops it through the `CallService` Capacitor plugin. If you place it at `app/public/zien-call.apk` on the server, the login page shows a download link.
+The APK (`app/build/outputs/apk/debug/app-debug.apk`) opens `https://call.zienorganisation.online` and asks for camera/mic permissions when a call starts. During a call it runs `CallService` (a foreground service of type *microphone*/*camera*, with wake and Wi-Fi locks), so the call keeps going in the background. The web app starts and stops it through the `CallService` Capacitor plugin, which also switches call audio between earpiece, speaker and headsets (`AudioRouter`) and turns the call into a picture-in-picture window when you leave the app. If you place it at `app/public/zien-call.apk` on the server, the login page shows a download link.
 
 ## Tests
 
