@@ -1,0 +1,6 @@
+# Keep LF everywhere (scripts and configs run on Linux); Windows batch files keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jar binary

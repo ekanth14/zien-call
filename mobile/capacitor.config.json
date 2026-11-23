@@ -1,0 +1,14 @@
+{
+  "appId": "online.zienorganisation.call",
+  "appName": "Zien Call",
+  "webDir": "www",
+  "server": {
+    "url": "https://call.zienorganisation.online",
+    "cleartext": false,
+    "allowNavigation": ["call.zienorganisation.online", "rtc.zienorganisation.online"]
+  },
+  "android": {
+    "appendUserAgent": "ZienCallApp",
+    "backgroundColor": "#0f1115"
+  }
+}

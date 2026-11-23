@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1115">
+<title>Zien Call Admin</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css?v=7">
+<style>
+  body{overflow:auto}
+  .wrap{max-width:1120px;margin:0 auto;padding:16px}
+  .ahead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .ahead .brand{margin:0;flex:1}
+  .ahead a{color:var(--accent2);text-decoration:none;font-weight:600}
+  .live{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .live i{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+  .live.stale i{background:var(--danger)}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+  .card h4{margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .bar{height:6px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:10px}
+  .bar b{display:block;height:100%;width:0;background:var(--accent);border-radius:4px;transition:width .4s}
+  .bar b.warn{background:#f59e0b}.bar b.bad{background:var(--danger)}
+  .wide{grid-column:1/-1}
+  .two{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:500;font-size:12px}
+  td.r,th.r{text-align:right}
+  svg.chart{width:100%;height:120px;display:block}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:4px}
+  .legend span::before{content:"";display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle;background:var(--c)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:var(--panel2)}
+  .tag.ok{background:#14532d;color:#bbf7d0}.tag.warn{background:#713f12;color:#fde68a}.tag.bad{background:#7f1d1d;color:#fecaca}
+  .free li{margin:6px 0;font-size:14px}
+  .free{padding-left:18px;margin:6px 0}
+  #members li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  #members{list-style:none;margin:0;padding:0;max-height:360px;overflow:auto}
+  #members li .info{flex:1;min-width:0}
+  #members small{color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis}
+  #members .av{width:32px;height:32px;min-width:32px;flex:0 0 32px;font-size:14px;border-radius:50%}
+  #members button,#chans button{padding:5px 10px;font-size:13px}
+  #chans li{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+  #chans{list-style:none;margin:0;padding:0}
+  .muted{color:var(--muted);font-size:13px}
+  .host{margin-bottom:12px}
+  .host-row{display:flex;align-items:center;gap:12px}
+  .host b{font-size:16px}
+  .addform{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:center;margin-top:8px}
+  .addform .check{margin:0}
+  .addform .primary{margin:0}
+  #members .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  #members button.danger{border-color:#7f1d1d;color:#fca5a5}
+  .on-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-left:6px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="wrap hidden" id="root">
+  <div class="ahead">
+    <div class="brand"><img src="/icon.svg" alt="" width="34" height="34"><div><h1 style="font-size:20px">Zien Call Admin</h1><p>Server monitoring &amp; members</p></div></div>
+    <span class="ping" id="ping" title="Round-trip time to the server"><i></i><span>– ms</span></span>
+    <div class="live" id="live"><i></i><span>Live</span></div>
+    <a href="/">← Back to chat</a>
+  </div>
+
+  <div class="card host" id="hostCard">
+    <div class="host-row">
+      <svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#C74634"/><rect x="5" y="8" width="14" height="8" rx="4" fill="none" stroke="#fff" stroke-width="2"/></svg>
+      <div style="flex:1;min-width:0">
+        <b id="hostName">Reading server…</b>
+        <div class="sub" id="hostSub"></div>
+      </div>
+      <span class="tag" id="hostTag"></span>
+    </div>
+    <p class="muted" id="hostNote" style="margin:8px 0 0">All numbers below are measured on the Oracle Cloud VM itself, not on the device you are viewing this page from.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card"><h4>CPU</h4><div class="big" id="cpu">–</div><div class="sub" id="cpuSub"></div><div class="bar"><b id="cpuBar"></b></div></div>
+    <div class="card"><h4>RAM</h4><div class="big" id="ram">–</div><div class="sub" id="ramSub"></div><div class="bar"><b id="ramBar"></b></div></div>
+    <div class="card"><h4>Swap</h4><div class="big" id="swap">–</div><div class="sub" id="swapSub"></div><div class="bar"><b id="swapBar"></b></div></div>
+    <div class="card"><h4>Disk</h4><div class="big" id="disk">–</div><div class="sub" id="diskSub"></div><div class="bar"><b id="diskBar"></b></div></div>
+    <div class="card"><h4>Network</h4><div class="big" id="net">–</div><div class="sub" id="netSub"></div></div>
+    <div class="card"><h4>Load · Uptime</h4><div class="big" id="load">–</div><div class="sub" id="upSub"></div></div>
+  </div>
+
+  <div class="two">
+    <div class="card"><h4>CPU &amp; RAM — last 24 h</h4><svg class="chart" id="chartRes" viewBox="0 0 600 120" preserveAspectRatio="none"></svg>
+      <div class="legend"><span style="--c:#8b7dff">CPU %</span><span style="--c:#22c55e">RAM %</span><span style="--c:#f59e0b">Swap %</span><span style="--c:#ef4444">CPU steal %</span></div></div>
+    <div class="card"><h4>Network — last 24 h</h4><svg class="chart" id="chartNet" viewBox="0 0 600 120" preserveAspectRatio="none"></svg>
+      <div class="legend"><span style="--c:#38bdf8">In</span><span style="--c:#f472b6">Out</span><span id="netMax"></span></div></div>
+  </div>
+
+  <div class="two">
+    <div class="card"><h4>Containers</h4>
+      <table><thead><tr><th>Service</th><th class="r">CPU</th><th class="r">Memory</th><th class="r">Swap</th></tr></thead><tbody id="conts"></tbody></table>
+      <p class="muted" id="nodeInfo"></p>
+    </div>
+    <div class="card"><h4>App activity</h4>
+      <table><tbody>
+        <tr><td>Online now</td><td class="r" id="aOnline">–</td></tr>
+        <tr><td>In calls now</td><td class="r" id="aCalls">–</td></tr>
+        <tr><td>Members</td><td class="r" id="aUsers">–</td></tr>
+        <tr><td>Messages (24 h / total)</td><td class="r" id="aMsgs">–</td></tr>
+        <tr><td>New sign-ups (24 h)</td><td class="r" id="aSignups">–</td></tr>
+        <tr><td>Database size</td><td class="r" id="aDb">–</td></tr>
+        <tr><td>Email verification</td><td class="r" id="aEmail">–</td></tr>
+      </tbody></table>
+      <p class="muted" id="aOnlineNames"></p>
+      <div id="rooms"></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card"><h4>Free-tier check (Oracle Always Free)</h4>
+      <ul class="free" id="free"></ul>
+    </div>
+    <div class="card"><h4>Channels</h4><ul id="chans"></ul></div>
+  </div>
+
+  <div class="card wide" style="margin-bottom:12px">
+    <h4>Email verification · Resend <span id="mailTag" class="tag"></span></h4>
+    <p class="muted" id="mailInfo" style="margin:4px 0 8px"></p>
+    <form id="fMail" class="addform" autocomplete="off">
+      <input name="to" type="email" placeholder="Send a test email to…" required aria-label="Test email address">
+      <button class="primary">Send test email</button>
+    </form>
+    <p class="msg" id="mailMsg" role="alert"></p>
+  </div>
+
+  <div class="card wide" style="margin-bottom:12px">
+    <h4>Members <span id="memberCount" class="tag"></span></h4>
+    <form id="fAdd" class="addform" autocomplete="off">
+      <input name="username" placeholder="Username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_.\-]{3,20}" required aria-label="Username">
+      <input name="password" type="text" placeholder="Password (8+ chars)" minlength="8" maxlength="128" required aria-label="Password" autocomplete="new-password">
+      <input name="email" type="email" placeholder="Email (optional)" aria-label="Email (optional)">
+      <label class="check"><input type="checkbox" name="isAdmin"> Admin</label>
+      <button class="primary">Add member</button>
+    </form>
+    <p class="msg" id="addMsg" role="alert"></p>
+    <ul id="members"></ul>
+  </div>
+
+  <dialog id="dlgPass">
+    <form id="fPass" method="dialog">
+      <h3>Reset password · <span id="passUser"></span></h3>
+      <label>New password<input name="password" type="text" minlength="8" maxlength="128" required autocomplete="new-password"></label>
+      <p class="hint">They'll be signed out everywhere and must log in with this password.</p>
+      <p class="msg" id="passMsg"></p>
+      <div class="row"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" style="width:auto">Set password</button></div>
+    </form>
+  </dialog>
+
+  <p class="credit">Zien Call Admin · Built by <b>Zien Technologies</b> — a vision of Zien Organisation</p>
+</div>
+<div id="denied" class="wrap hidden"><div class="auth-card" style="margin:10vh auto"><h2>Admins only</h2><p class="hint">Log in with an admin account first.</p><a class="apk" href="/">Go to log in</a></div></div>
+<script src="/admin.js?v=7"></script>
+</body>
+</html>

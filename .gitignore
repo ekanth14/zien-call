@@ -1,0 +1,34 @@
+# secrets — never commit
+.env
+*.env
+!.env.example
+livekit.yaml
+*.key
+*.pem
+
+# runtime data / local test databases
+app/data/
+app/data-*/
+*.db
+*.db-shm
+*.db-wal
+backups/
+
+# dependencies and build output
+node_modules/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/capacitor-cordova-android-plugins/build/
+mobile/build.log
+*.apk
+*.aab
+
+# editor / tooling
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

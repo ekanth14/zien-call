@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="description" content="Zien Call — private chat and audio/video calls. Built by Zien Technologies, a vision of Zien Organisation.">
+<title>Zien Call</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/app.css?v=5">
+</head>
+<body>
+
+<!-- ============ AUTH ============ -->
+<section id="auth" class="hidden">
+  <div class="auth-card">
+    <div class="brand"><img src="/icon.svg" alt="" width="40" height="40"><div><h1>Zien Call</h1><p>Private chat &amp; calls</p></div></div>
+
+    <div class="tabs" id="authTabs">
+      <button data-tab="login" class="active">Log in</button>
+      <button data-tab="signup">Create account</button>
+    </div>
+
+    <form id="fLogin" data-view="login">
+      <label>Username or email<input name="login" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary">Log in</button>
+      <button type="button" class="link" data-go="forgot">Forgot password?</button>
+    </form>
+
+    <form id="fSignup" data-view="signup" class="hidden">
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>Username<input name="username" autocomplete="username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_.\-]{3,20}" required></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="primary">Send verification code</button>
+      <p class="hint" id="signupOff" hidden>Email sign-up isn't switched on yet. Ask an admin to create your account.</p>
+    </form>
+
+    <form id="fVerify" data-view="verify" class="hidden">
+      <p class="hint">We sent a 6-digit code to <b id="verifyEmail"></b>. Check spam too.</p>
+      <label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" required></label>
+      <button class="primary">Verify &amp; create account</button>
+      <button type="button" class="link" data-go="signup">Change email or resend</button>
+    </form>
+
+    <form id="fForgot" data-view="forgot" class="hidden">
+      <p class="hint">Enter your account email and we'll send a reset code.</p>
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <button class="primary">Send reset code</button>
+      <button type="button" class="link" data-go="login">Back to log in</button>
+    </form>
+
+    <form id="fReset" data-view="reset" class="hidden">
+      <p class="hint">If that email has an account, a code is on its way.</p>
+      <label>Reset code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" required></label>
+      <label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="primary">Set new password</button>
+      <button type="button" class="link" data-go="login">Back to log in</button>
+    </form>
+
+    <p class="msg" id="authMsg" role="alert"></p>
+    <a id="apkLink" class="apk" href="/zien-call.apk" download hidden>⬇ Download the Android app</a>
+  </div>
+  <footer class="credit">Built by <b>Zien Technologies</b> — a vision of Zien Organisation</footer>
+</section>
+
+<!-- ============ DASHBOARD ============ -->
+<section id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="brand small"><img src="/icon.svg" alt="" width="28" height="28"><b>Zien Call</b><span class="ping" id="ping" title="Round-trip time to the server"><i></i><span>– ms</span></span></div>
+      <button class="icon" id="closeSide" title="Close menu">✕</button>
+    </div>
+    <div class="me" id="me"></div>
+
+    <div class="side-sec">
+      <div class="sec-title">Channels <button class="icon sm" id="addChannel" title="New channel">＋</button></div>
+      <ul id="channelList"></ul>
+    </div>
+    <div class="side-sec grow">
+      <div class="sec-title">Direct messages</div>
+      <ul id="userList"></ul>
+    </div>
+    <div class="side-foot">
+      <button id="btnAdmin" class="ghost hidden">Admin &amp; monitoring</button>
+      <button id="btnSettings" class="ghost">Settings</button>
+      <p class="credit">Built by <b>Zien Technologies</b><br>a vision of Zien Organisation</p>
+    </div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <button class="icon" id="openSide" title="Menu">☰</button>
+      <div class="conv-title"><b id="convTitle">#general</b><span id="convSub"></span></div>
+      <span class="ping mobile-only" id="pingTop" title="Round-trip time to the server"><i></i><span>– ms</span></span>
+      <button class="icon call" id="btnAudio" title="Audio call" aria-label="Audio call"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+      <button class="icon call" id="btnVideo" title="Video call" aria-label="Video call"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+    </header>
+    <div id="messages"><div id="older" class="hidden"><button class="ghost" id="loadOlder">Load older messages</button></div><div id="msgList"></div></div>
+    <form id="composer" autocomplete="off">
+      <textarea id="msgInput" rows="1" maxlength="2000" placeholder="Message…" aria-label="Message"></textarea>
+      <button class="primary" id="sendBtn" title="Send">Send</button>
+    </form>
+  </main>
+  <div id="scrim" class="hidden"></div>
+</section>
+
+<!-- ============ CALL ============ -->
+<section id="call" class="hidden">
+  <div class="call-head"><b id="callTitle"></b><span id="callState"></span><span class="ping" id="callPing" title="Round-trip time to the server"><i></i><span>– ms</span></span></div>
+  <div id="grid"></div>
+  <div id="audios" hidden></div>
+  <div class="call-bar">
+    <button class="round" id="cMic" title="Mute" aria-label="Mute"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+    <button class="round" id="cCam" title="Camera" aria-label="Camera"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+    <button class="round" id="cFlip" title="Switch camera" aria-label="Switch camera"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+    <button class="round danger" id="cLeave" title="Leave call" aria-label="Leave call"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+  </div>
+</section>
+
+<!-- ============ OVERLAYS ============ -->
+<div id="ring" class="toast hidden">
+  <div><b id="ringFrom"></b><span id="ringWhat"></span></div>
+  <div class="row"><button class="primary" id="ringJoin">Join</button><button class="ghost" id="ringDismiss">Dismiss</button></div>
+</div>
+
+<dialog id="dlgChannel">
+  <form id="fChannel" method="dialog">
+    <h3>New channel</h3>
+    <label>Name<input name="name" maxlength="24" pattern="[a-z0-9\-]{2,24}" placeholder="e.g. family" required></label>
+    <p class="hint">2–24 lowercase letters, numbers or -</p>
+    <p class="msg" id="chanMsg"></p>
+    <div class="row"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" style="width:auto">Create</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgSettings">
+  <h3>Settings</h3>
+  <label class="check"><input type="checkbox" id="optRelay"> Force port-443 relay (TURN/TLS)<small>Use if calls fail on strict networks. Slightly more delay.</small></label>
+  <label class="check"><input type="checkbox" id="optSound" checked> Ring sound for incoming calls</label>
+  <form id="fPassword" class="pwform" autocomplete="off">
+    <h4>Change password</h4>
+    <input name="current" type="password" placeholder="Current password" autocomplete="current-password" required aria-label="Current password">
+    <input name="password" type="password" placeholder="New password (8+ characters)" minlength="8" maxlength="128" autocomplete="new-password" required aria-label="New password">
+    <button class="ghost">Change password</button>
+    <p class="msg" id="pwMsg"></p>
+  </form>
+  <div class="row"><button class="ghost" id="btnLogout">Log out</button><button class="primary" data-close>Done</button></div>
+  <p class="credit">Zien Call · Built by <b>Zien Technologies</b> — a vision of Zien Organisation</p>
+</dialog>
+
+
+<script src="/livekit-client.js"></script>
+<script src="/app.js?v=5"></script>
+</body>
+</html>

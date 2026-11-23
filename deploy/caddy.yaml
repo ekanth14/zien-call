@@ -1,0 +1,51 @@
+logging:
+  logs:
+    default:
+      level: INFO
+storage:
+  module: file_system
+  root: /data
+apps:
+  tls:
+    certificates:
+      automate:
+        - call.zienorganisation.online
+        - rtc.zienorganisation.online
+        - turn.zienorganisation.online
+  layer4:
+    servers:
+      main:
+        listen: [":443"]
+        routes:
+          - match:
+              - tls:
+                  sni:
+                    - "turn.zienorganisation.online"
+            handle:
+              - handler: tls
+              - handler: proxy
+                upstreams:
+                  - dial: ["10.0.0.143:5349"]
+          - match:
+              - tls:
+                  sni:
+                    - "rtc.zienorganisation.online"
+            handle:
+              - handler: tls
+                connection_policies:
+                  - alpn: ["http/1.1"]
+              - handler: proxy
+                upstreams:
+                  - dial: ["127.0.0.1:7880"]
+          - match:
+              - tls:
+                  sni:
+                    - "call.zienorganisation.online"
+            handle:
+              - handler: tls
+                connection_policies:
+                  - alpn: ["http/1.1"]
+              - handler: proxy
+                proxy_protocol: v1
+                upstreams:
+                  - dial: ["127.0.0.1:3000"]

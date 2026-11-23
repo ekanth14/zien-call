@@ -1,0 +1,21 @@
+# LiveKit SFU config. Copy to livekit.yaml and put your own key/secret under "keys"
+# (generate with: docker run --rm livekit/livekit-server generate-keys).
+port: 7880
+bind_addresses:
+  - ""
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+turn:
+  enabled: true
+  domain: turn.zienorganisation.online
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: true
+room:
+  max_participants: 10
+  empty_timeout: 300
+keys:
+  YOUR_API_KEY: YOUR_API_SECRET
